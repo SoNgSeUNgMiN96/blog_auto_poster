@@ -52,6 +52,8 @@ class Settings(BaseSettings):
     auto_create_tables: bool = Field(default=True, alias="AUTO_CREATE_TABLES")
     processing_mode: str = Field(default="queue", alias="PROCESSING_MODE")
     batch_process_limit: int = Field(default=20, alias="BATCH_PROCESS_LIMIT")
+    worker_random_delay_min_minutes: int = Field(default=0, alias="WORKER_RANDOM_DELAY_MIN_MINUTES")
+    worker_random_delay_max_minutes: int = Field(default=35, alias="WORKER_RANDOM_DELAY_MAX_MINUTES")
 
     @property
     def sqlalchemy_database_url(self) -> str:

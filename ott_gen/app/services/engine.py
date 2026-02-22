@@ -193,7 +193,8 @@ class OTTGenEngine:
         if remaining == 0:
             return {"today_used": used, "generated": 0, "failed": 0, "remaining": 0}
 
-        queued = self.store.get_next_queued(remaining, min_overview_length=self.settings.scheduler_min_overview_length)
+        target_count = min(remaining, self.settings.effective_submit_per_run_limit)
+        queued = self.store.get_next_queued(target_count, min_overview_length=self.settings.scheduler_min_overview_length)
         generated = 0
         failed = 0
 

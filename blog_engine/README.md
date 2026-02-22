@@ -95,6 +95,7 @@ APP_ENV=dev poetry run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 6. `GOOGLE_SERVICE_ACCOUNT_FILE` (Google 색인 사용 시)
 - 이미지 최적화: `IMAGE_MAX_WIDTH`, `IMAGE_MAX_HEIGHT`, `IMAGE_WEBP_QUALITY`, `IMAGE_KEEP_ORIGINAL`
 - 큐 처리 모드: `PROCESSING_MODE=sync|queue`, `BATCH_PROCESS_LIMIT=20`
+- 워커 랜덤 지연: `WORKER_RANDOM_DELAY_MIN_MINUTES`, `WORKER_RANDOM_DELAY_MAX_MINUTES` (기본 `0~35`)
 
 카테고리 자동 지정:
 - `WORDPRESS_CATEGORY_MAP=ott:OTT 리뷰,it:IT 리뷰` 형식으로 매핑
@@ -129,6 +130,12 @@ APP_ENV=dev poetry run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 ```bash
 APP_ENV=dev poetry run python -m app.worker --limit 20
+```
+
+즉시 실행(랜덤 지연 건너뛰기):
+
+```bash
+APP_ENV=dev poetry run python -m app.worker --limit 20 --skip-random-delay
 ```
 
 cron(매시간 0분):

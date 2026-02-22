@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     enrich_tavily_api_key_env: str = Field(default="TAVILY_API_KEY", alias="ENRICH_TAVILY_API_KEY_ENV")
 
     daily_generate_limit: int = Field(default=3, alias="DAILY_GENERATE_LIMIT")
+    submit_per_run_limit: int = Field(default=1, alias="SUBMIT_PER_RUN_LIMIT")
     publish_hours: str = Field(default="10,15,21", alias="PUBLISH_HOURS")
     publish_minute: int = Field(default=0, alias="PUBLISH_MINUTE")
     parse_hour: int = Field(default=9, alias="PARSE_HOUR")
@@ -110,6 +111,10 @@ class Settings(BaseSettings):
         if 0 <= self.publish_minute <= 59:
             return self.publish_minute
         return 0
+
+    @property
+    def effective_submit_per_run_limit(self) -> int:
+        return max(1, self.submit_per_run_limit)
 
     @property
     def effective_parse_minute(self) -> int:

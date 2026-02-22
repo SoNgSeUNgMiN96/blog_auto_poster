@@ -26,13 +26,14 @@ def run_scheduler() -> None:
         scheduler.add_job(engine.generate_daily_batch, "cron", hour=hour, minute=settings.effective_publish_minute)
 
     logging.getLogger("ott_gen.scheduler").info(
-        "scheduler started | timezone=%s publish_hours=%s publish_minute=%s parse_hour=%s parse_minute=%s daily_limit=%s",
+        "scheduler started | timezone=%s publish_hours=%s publish_minute=%s parse_hour=%s parse_minute=%s daily_limit=%s submit_per_run=%s",
         settings.timezone,
         settings.publish_hours_list,
         settings.effective_publish_minute,
         settings.effective_parse_hour,
         settings.effective_parse_minute,
         settings.daily_generate_limit,
+        settings.effective_submit_per_run_limit,
     )
     scheduler.start()
 

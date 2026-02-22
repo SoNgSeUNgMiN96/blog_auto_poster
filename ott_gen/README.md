@@ -16,11 +16,12 @@ A영역 대체 모듈입니다.
 - DB 큐 직적재 모드(`B_ENGINE_SUBMIT_MODE=db_queue`) 지원: B엔진 API 서버 없이 blog_engine DB에 바로 적재
 - 재생성하려면 웹에서 `플래그 해제` 후 다시 생성
 
-## 큐 기반 운영 요약
+## 큐 구조(중요)
 
-1. `ott_gen` 스케줄러가 TMDB 파싱 + 줄거리 보강 + blog_engine DB 큐 적재
-2. `blog_engine`은 API 서버 없이 워커(`python -m app.worker`)만 1시간 주기로 실행
-3. `ott_gen` 웹 대시보드는 필요할 때만 켜서 점검/수동생성 후 종료
+1. 후보풀 큐(`ott_gen/data/ott_gen.db:candidates`): 파싱된 글감이 많이 쌓이는 저장소
+2. 발행 요청 큐(`blog_engine.posts`): 실제 생성 요청이 들어가는 큐
+3. 일일 제한(`DAILY_GENERATE_LIMIT`)은 2번(발행 요청 큐)에만 적용
+4. 시간 분배 업로드는 `SUBMIT_PER_RUN_LIMIT`로 제어 (보통 `1`)
 
 ## 0) 초기 설정
 
@@ -40,10 +41,25 @@ cp env/.env.dev.example env/.env.dev
 export BLOG_ENGINE_DB_PASSWORD='mysql비밀번호'
 ```
 
-## 1) 수동 1회 배치(파싱+큐적재)
+## 1) 수동 1회 실행
+
+일일 한도만 제출(기본, 권장):
 
 ```bash
 APP_ENV=dev poetry run python -m app.main
+```
+
+명시적으로 실행:
+
+```bash
+# 일일 한도만 blog_engine 큐로 제출
+APP_ENV=dev poetry run python -m app.main --action submit
+
+# 파싱만 수행(후보풀 큐 적재)
+APP_ENV=dev poetry run python -m app.main --action parse
+
+# 파싱 + 일일 한도 제출
+APP_ENV=dev poetry run python -m app.main --action full
 ```
 
 ## 2) 상시 자동 배치(권장)
@@ -54,7 +70,7 @@ APP_ENV=dev poetry run python -m app.scheduler
 
 동작:
 - `PARSE_HOUR`:`PARSE_MINUTE` 하루 1회: 소스 파싱(최신 1회 + 백필 페이지 진행)
-- `PUBLISH_HOURS` + `PUBLISH_MINUTE`: 남은 일일 한도 내에서 생성 요청을 blog_engine DB 큐로 적재
+- `PUBLISH_HOURS` + `PUBLISH_MINUTE`: 매 타임마다 `SUBMIT_PER_RUN_LIMIT` 만큼만 생성 요청을 blog_engine DB 큐로 적재
 
 ## 3) 웹 대시보드 (필요할 때만 ON/OFF)
 
@@ -79,6 +95,7 @@ APP_ENV=dev poetry run python -m app.web.run
 ## 주요 환경값
 
 - `DAILY_GENERATE_LIMIT=3`
+- `SUBMIT_PER_RUN_LIMIT=1` (배치 1회당 제출 건수)
 - `PUBLISH_HOURS=10,15,21`
 - `PUBLISH_MINUTE=0`
 - `PARSE_HOUR=9`
@@ -105,6 +122,17 @@ APP_ENV=dev poetry run python -m app.web.run
 1. 상시: `ott_gen` 스케줄러만 실행
 2. 필요 시: `ott_gen` 대시보드 수동 실행 후 종료
 3. 상시 API 서버 없이: `blog_engine` 워커만 cron으로 1시간 주기 실행
+
+## 하루 5건 시간 분배 예시
+
+```env
+DAILY_GENERATE_LIMIT=5
+SUBMIT_PER_RUN_LIMIT=1
+PUBLISH_HOURS=10,12,15,19,21
+PUBLISH_MINUTE=0
+```
+
+이 설정이면 5개 시간 슬롯에서 각 1건씩, 하루 최대 5건이 제출됩니다.
 
 ## 모듈 이름 변경
 
