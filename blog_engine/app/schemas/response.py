@@ -24,3 +24,4 @@ class PostStatusResponse(BaseModel):
     wp_post_id: int | None
     published_at: datetime | None
     generated_content: dict[str, Any] | None
+    last_error: str | None

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 
 from app.config import get_settings
 from app.database import Base, SessionLocal, engine
@@ -9,6 +10,10 @@ from app.main import _process_queue_posts
 
 
 def main() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+    )
     settings = get_settings()
     if settings.auto_create_tables:
         Base.metadata.create_all(bind=engine)
@@ -24,7 +29,7 @@ def main() -> None:
 
     with SessionLocal() as db:
         result = _process_queue_posts(db, args.limit)
-    print(json.dumps(result, ensure_ascii=False))
+    print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

@@ -1,6 +1,8 @@
 from datetime import datetime
 from pathlib import Path
+import logging
 import re
+import traceback
 from typing import Any
 
 import markdown as md
@@ -26,6 +28,7 @@ from app.services.seo_engine import SeoEngine
 from app.services.wordpress_publisher import WordPressPublisher
 
 settings = get_settings()
+logger = logging.getLogger("blog_engine")
 
 limiter = Limiter(key_func=get_remote_address, default_limits=[settings.rate_limit])
 app = FastAPI(title=settings.app_name)
@@ -115,9 +118,16 @@ def _mark_post_failed(db: Session, post_id: int, error_detail: str) -> None:
     failed_post = db.get(Post, post_id)
     if failed_post:
         failed_post.status = "failed"
-        if isinstance(failed_post.raw_input, dict):
-            failed_post.raw_input["last_error"] = str(error_detail)[:1000]
+        raw_input = dict(failed_post.raw_input or {})
+        raw_input["last_error"] = str(error_detail)[:1000]
+        failed_post.raw_input = raw_input
         db.commit()
+
+
+def _format_error(exc: Exception) -> str:
+    trace = traceback.format_exc(limit=4).strip().splitlines()
+    tail = trace[-1] if trace else ""
+    return f"{exc.__class__.__name__}: {exc}" + (f" | {tail}" if tail else "")
 
 
 def _run_generation_pipeline(db: Session, post: Post, payload: GeneratePostRequest) -> str:
@@ -204,7 +214,7 @@ def _process_single_post(db: Session, post_id: int) -> str:
     return _run_generation_pipeline(db, post, payload)
 
 
-def _process_queue_posts(db: Session, limit: int) -> dict[str, int]:
+def _process_queue_posts(db: Session, limit: int) -> dict[str, Any]:
     target_limit = max(1, limit)
     post_ids = list(
         db.execute(
@@ -214,7 +224,13 @@ def _process_queue_posts(db: Session, limit: int) -> dict[str, int]:
             .limit(target_limit)
         ).scalars()
     )
-    result = {"requested": len(post_ids), "processed": 0, "failed": 0, "published": 0}
+    result: dict[str, Any] = {
+        "requested": len(post_ids),
+        "processed": 0,
+        "failed": 0,
+        "published": 0,
+        "errors": [],
+    }
     for post_id in post_ids:
         try:
             final_status = _process_single_post(db, post_id)
@@ -222,8 +238,11 @@ def _process_queue_posts(db: Session, limit: int) -> dict[str, int]:
             if final_status == "published":
                 result["published"] += 1
         except Exception as exc:
+            error_detail = _format_error(exc)
             result["failed"] += 1
-            _mark_post_failed(db, post_id, str(exc))
+            result["errors"].append({"post_id": post_id, "error": error_detail})
+            _mark_post_failed(db, post_id, error_detail)
+            logger.exception("queue process failed | post_id=%s", post_id)
     return result
 
 
@@ -346,7 +365,7 @@ def process_queue(
     limit: int | None = None,
     db: Session = Depends(get_db),
     _: None = Depends(verify_admin_token),
-) -> dict[str, int]:
+) -> dict[str, Any]:
     try:
         return _process_queue_posts(db, limit or settings.batch_process_limit)
     except Exception as exc:
@@ -371,4 +390,5 @@ def get_status(
         wp_post_id=post.wp_post_id,
         published_at=post.published_at,
         generated_content=post.generated_content,
+        last_error=str((post.raw_input or {}).get("last_error", "") or "") or None,
     )
