@@ -4,6 +4,7 @@ import logging
 import re
 import traceback
 from typing import Any
+from urllib.parse import urlparse, urlunparse
 
 import markdown as md
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
@@ -110,6 +111,29 @@ def _render_section_html(content: str) -> str:
         normalized,
         extensions=["extra", "sane_lists", "nl2br"],
         output_format="html5",
+    )
+
+
+def _to_public_url(url: str | None) -> str | None:
+    raw = str(url or "").strip()
+    if not raw:
+        return None
+    public_base = str(settings.wordpress_public_base_url or "").strip().rstrip("/")
+    if not public_base:
+        return raw
+    parsed_raw = urlparse(raw)
+    parsed_public = urlparse(public_base)
+    if not parsed_raw.scheme or not parsed_raw.netloc:
+        return raw
+    return urlunparse(
+        (
+            parsed_public.scheme or parsed_raw.scheme,
+            parsed_public.netloc or parsed_raw.netloc,
+            parsed_raw.path,
+            parsed_raw.params,
+            parsed_raw.query,
+            parsed_raw.fragment,
+        )
     )
 
 
@@ -258,6 +282,7 @@ def _publish_post_internal(db: Session, post: Post) -> PublishResponse:
         media = publisher.upload_media(Path(image.local_path))
         image.wp_media_id = media.get("id")
         wp_media_url = media.get("source_url") or ((media.get("guid") or {}).get("rendered"))
+        wp_media_url = _to_public_url(wp_media_url)
         if wp_media_url and content_html:
             # Replace locally-rendered image path with final WordPress media URL.
             content_html = content_html.replace(image.local_path, wp_media_url)
@@ -294,7 +319,7 @@ def _publish_post_internal(db: Session, post: Post) -> PublishResponse:
     )
 
     post.wp_post_id = wp_post.get("id")
-    post.wp_url = wp_post.get("link")
+    post.wp_url = _to_public_url(wp_post.get("link"))
     post.status = "published"
     post.published_at = datetime.utcnow()
     db.commit()

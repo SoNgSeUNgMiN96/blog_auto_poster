@@ -92,6 +92,7 @@ APP_ENV=dev poetry run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 3. `API_ADMIN_TOKEN` (API 보호용 토큰)
 4. `OPENAI_API_KEY_ENV` 이름 확인 후, OS 환경변수에 OpenAI 키 등록
 5. `WORDPRESS_BASE_URL`, `WORDPRESS_USERNAME`, `WORDPRESS_APP_PASSWORD` (발행 기능 사용 시)
+   - 내부 API 주소와 외부 공개 도메인이 다르면 `WORDPRESS_PUBLIC_BASE_URL`도 설정
 6. `GOOGLE_SERVICE_ACCOUNT_FILE` (Google 색인 사용 시)
 - 이미지 최적화: `IMAGE_MAX_WIDTH`, `IMAGE_MAX_HEIGHT`, `IMAGE_WEBP_QUALITY`, `IMAGE_KEEP_ORIGINAL`
 - 큐 처리 모드: `PROCESSING_MODE=sync|queue`, `BATCH_PROCESS_LIMIT=20`
@@ -103,6 +104,11 @@ APP_ENV=dev poetry run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 로컬 WordPress를 별도 폴더로 운영하려면 `/Users/seungminsong/Desktop/coding/blog_auto_poster/wordpress_stack/README.md` 절차를 먼저 실행하세요.
 (`WORDPRESS_DB_PASSWORD`, `WORDPRESS_ADMIN_PASSWORD`는 wordpress_stack에서 셸 환경변수로만 주입)
+
+Cloudflare/리버스프록시 환경:
+- `WORDPRESS_BASE_URL`: 내부에서 REST API 호출 가능한 주소
+- `WORDPRESS_PUBLIC_BASE_URL`: 외부 방문자가 접근하는 실제 도메인(예: `https://blog.example.com`)
+- 본문 이미지/글 URL은 `WORDPRESS_PUBLIC_BASE_URL` 기준으로 저장됩니다.
 
 ## 요청 예시: /generate-post
 
