@@ -38,7 +38,7 @@ class ContentGenerator:
 
         completion = self.client.chat.completions.create(
             model=self.settings.openai_model,
-            temperature=0.7,
+            temperature=0.78,
             messages=[
                 {"role": "system", "content": system_role},
                 {

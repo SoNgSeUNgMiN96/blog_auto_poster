@@ -110,6 +110,123 @@ def _render_section_html(content: str) -> str:
     )
 
 
+def _mark_post_failed(db: Session, post_id: int, error_detail: str) -> None:
+    db.rollback()
+    failed_post = db.get(Post, post_id)
+    if failed_post:
+        failed_post.status = "failed"
+        if isinstance(failed_post.raw_input, dict):
+            failed_post.raw_input["last_error"] = str(error_detail)[:1000]
+        db.commit()
+
+
+def _run_generation_pipeline(db: Session, post: Post, payload: GeneratePostRequest) -> str:
+    content_generator = ContentGenerator(settings)
+    generated = content_generator.generate(payload.model_dump())
+    seo = SeoEngine.optimize(generated)
+    work_title = str(payload.prompt_variables.get("title", "")).strip()
+    final_title = _build_display_title(work_title, seo["seo_title"])
+    seo["seo_title"] = final_title
+    seo["slug"] = slugify(final_title)[:120] or f"post-{post.id}"
+
+    image_engine = ImageEngine(settings)
+    stored_images: list[dict[str, str]] = []
+    for idx, image in enumerate(payload.images):
+        local_path = image_engine.download_and_convert(image.url, post.id, idx)
+        stored_images.append({"path": str(local_path), "type": image.type})
+        db.add(
+            Image(
+                post_id=post.id,
+                original_url=image.url,
+                local_path=str(local_path),
+                order=idx,
+            )
+        )
+
+    poster_url = next((img["path"] for img in stored_images if img["type"] == "poster"), None)
+    if not poster_url and stored_images:
+        poster_url = stored_images[0]["path"]
+    still_urls = [img["path"] for img in stored_images if img["type"] == "still"]
+    rendered_sections = [
+        {
+            "heading": str(section.get("heading", "") or ""),
+            "content": str(section.get("content", "") or ""),
+            "content_html": _render_section_html(str(section.get("content", "") or "")),
+        }
+        for section in generated.get("sections", [])
+    ]
+
+    renderer = HtmlRenderer(Path(__file__).resolve().parent / "templates")
+    html = renderer.render(
+        payload.render_template,
+        {
+            "seo_title": seo["seo_title"],
+            "meta_description": seo["meta_description"],
+            "sections": rendered_sections,
+            "tags": seo["tags"],
+            "poster_url": poster_url,
+            "still_urls": still_urls,
+            "tmdb_rating": str(payload.prompt_variables.get("rating", "") or "").strip(),
+        },
+    )
+
+    generated["tags"] = seo["tags"]
+    generated["meta_description"] = seo["meta_description"]
+    generated["title"] = seo["seo_title"]
+
+    post.generated_content = generated
+    post.rendered_html = html
+    post.seo_title = seo["seo_title"]
+    post.meta_description = seo["meta_description"]
+    post.slug = _build_unique_slug(db, seo["slug"], post.id)
+    post.status = "generated"
+    db.commit()
+
+    if payload.auto_publish:
+        publish_result = _publish_post_internal(db, post)
+        return publish_result.status
+    return post.status
+
+
+def _process_single_post(db: Session, post_id: int) -> str:
+    post = db.get(Post, post_id)
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    if post.status not in {"draft", "queued"}:
+        return post.status
+    if not isinstance(post.raw_input, dict):
+        raise ValueError("Invalid raw_input payload")
+
+    payload = GeneratePostRequest.model_validate(post.raw_input)
+    post.status = "processing"
+    db.commit()
+    db.refresh(post)
+    return _run_generation_pipeline(db, post, payload)
+
+
+def _process_queue_posts(db: Session, limit: int) -> dict[str, int]:
+    target_limit = max(1, limit)
+    post_ids = list(
+        db.execute(
+            select(Post.id)
+            .where(Post.status.in_(["draft", "queued"]))
+            .order_by(Post.created_at.asc())
+            .limit(target_limit)
+        ).scalars()
+    )
+    result = {"requested": len(post_ids), "processed": 0, "failed": 0, "published": 0}
+    for post_id in post_ids:
+        try:
+            final_status = _process_single_post(db, post_id)
+            result["processed"] += 1
+            if final_status == "published":
+                result["published"] += 1
+        except Exception as exc:
+            result["failed"] += 1
+            _mark_post_failed(db, post_id, str(exc))
+    return result
+
+
 def _publish_post_internal(db: Session, post: Post) -> PublishResponse:
     if not post.rendered_html or not post.seo_title or not post.slug:
         raise HTTPException(status_code=400, detail="Post is not ready for publishing")
@@ -183,86 +300,20 @@ def generate_post(
     db: Session = Depends(get_db),
     _: None = Depends(verify_admin_token),
 ) -> GeneratePostResponse:
-    post = Post(raw_input=payload.model_dump(), status="draft")
+    run_mode = (settings.processing_mode or "sync").strip().lower()
+    post = Post(raw_input=payload.model_dump(), status="queued" if run_mode == "queue" else "draft")
     db.add(post)
     db.commit()
     db.refresh(post)
 
-    try:
-        content_generator = ContentGenerator(settings)
-        generated = content_generator.generate(payload.model_dump())
-        seo = SeoEngine.optimize(generated)
-        work_title = str(payload.prompt_variables.get("title", "")).strip()
-        final_title = _build_display_title(work_title, seo["seo_title"])
-        seo["seo_title"] = final_title
-        seo["slug"] = slugify(final_title)[:120] or f"post-{post.id}"
-
-        image_engine = ImageEngine(settings)
-        stored_images: list[dict[str, str]] = []
-        for idx, image in enumerate(payload.images):
-            local_path = image_engine.download_and_convert(image.url, post.id, idx)
-            stored_images.append({"path": str(local_path), "type": image.type})
-            db.add(
-                Image(
-                    post_id=post.id,
-                    original_url=image.url,
-                    local_path=str(local_path),
-                    order=idx,
-                )
-            )
-
-        poster_url = next((img["path"] for img in stored_images if img["type"] == "poster"), None)
-        if not poster_url and stored_images:
-            poster_url = stored_images[0]["path"]
-        still_urls = [img["path"] for img in stored_images if img["type"] == "still"]
-        rendered_sections = [
-            {
-                "heading": str(section.get("heading", "") or ""),
-                "content": str(section.get("content", "") or ""),
-                "content_html": _render_section_html(str(section.get("content", "") or "")),
-            }
-            for section in generated.get("sections", [])
-        ]
-
-        renderer = HtmlRenderer(Path(__file__).resolve().parent / "templates")
-        html = renderer.render(
-            payload.render_template,
-            {
-                "seo_title": seo["seo_title"],
-                "meta_description": seo["meta_description"],
-                "sections": rendered_sections,
-                "tags": seo["tags"],
-                "poster_url": poster_url,
-                "still_urls": still_urls,
-                "tmdb_rating": str(payload.prompt_variables.get("rating", "") or "").strip(),
-            },
-        )
-
-        generated["tags"] = seo["tags"]
-        generated["meta_description"] = seo["meta_description"]
-        generated["title"] = seo["seo_title"]
-
-        post.generated_content = generated
-        post.rendered_html = html
-        post.seo_title = seo["seo_title"]
-        post.meta_description = seo["meta_description"]
-        post.slug = _build_unique_slug(db, seo["slug"], post.id)
-        post.status = "generated"
-
-        db.commit()
-        if payload.auto_publish:
-            publish_result = _publish_post_internal(db, post)
-            return GeneratePostResponse(
-                post_id=publish_result.post_id,
-                status=publish_result.status,
-            )
+    if run_mode == "queue":
         return GeneratePostResponse(post_id=post.id, status=post.status)
+
+    try:
+        final_status = _process_single_post(db, post.id)
+        return GeneratePostResponse(post_id=post.id, status=final_status)
     except Exception as exc:
-        db.rollback()
-        failed_post = db.get(Post, post.id)
-        if failed_post:
-            failed_post.status = "failed"
-            db.commit()
+        _mark_post_failed(db, post.id, str(exc))
         raise HTTPException(status_code=500, detail=f"Generation failed: {exc}") from exc
 
 
@@ -286,6 +337,20 @@ def publish_post(
             failed_post.status = "failed"
             db.commit()
         raise HTTPException(status_code=500, detail=f"Publish failed: {exc}") from exc
+
+
+@app.post("/process-queue")
+@limiter.limit(settings.rate_limit)
+def process_queue(
+    request: Request,
+    limit: int | None = None,
+    db: Session = Depends(get_db),
+    _: None = Depends(verify_admin_token),
+) -> dict[str, int]:
+    try:
+        return _process_queue_posts(db, limit or settings.batch_process_limit)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Queue processing failed: {exc}") from exc
 
 
 @app.get("/status/{post_id}", response_model=PostStatusResponse)

@@ -50,6 +50,8 @@ class Settings(BaseSettings):
 
     rate_limit: str = Field(default="30/minute", alias="RATE_LIMIT")
     auto_create_tables: bool = Field(default=True, alias="AUTO_CREATE_TABLES")
+    processing_mode: str = Field(default="queue", alias="PROCESSING_MODE")
+    batch_process_limit: int = Field(default=20, alias="BATCH_PROCESS_LIMIT")
 
     @property
     def sqlalchemy_database_url(self) -> str:

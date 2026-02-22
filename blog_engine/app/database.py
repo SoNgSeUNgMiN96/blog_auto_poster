@@ -22,9 +22,3 @@ def get_db() -> Generator[Session, None, None]:
         yield db
     finally:
         db.close()
-
-if __name__ == "__main__":
-    print(settings.sqlalchemy_database_url)
-    print(engine.url)
-    print(settings.db_password)
-    print(settings.wordpress_default_status)

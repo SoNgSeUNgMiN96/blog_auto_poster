@@ -1,6 +1,7 @@
 from functools import lru_cache
 import os
 from pathlib import Path
+from urllib.parse import quote_plus
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -45,23 +46,35 @@ class Settings(BaseSettings):
     timezone: str = Field(default="Asia/Seoul", alias="TIMEZONE")
 
     b_engine_base_url: str = Field(default="http://127.0.0.1:8000", alias="B_ENGINE_BASE_URL")
+    b_engine_submit_mode: str = Field(default="api", alias="B_ENGINE_SUBMIT_MODE")
     b_engine_admin_token: str = Field(default="", alias="B_ENGINE_ADMIN_TOKEN")
     b_engine_render_template: str = Field(default="ott_review.html", alias="B_ENGINE_RENDER_TEMPLATE")
     b_engine_auto_publish: bool = Field(default=True, alias="B_ENGINE_AUTO_PUBLISH")
+    b_engine_db_driver: str = Field(default="mysql+pymysql", alias="B_ENGINE_DB_DRIVER")
+    b_engine_db_host: str = Field(default="127.0.0.1", alias="B_ENGINE_DB_HOST")
+    b_engine_db_port: int = Field(default=3306, alias="B_ENGINE_DB_PORT")
+    b_engine_db_name: str = Field(default="blog_engine_dev", alias="B_ENGINE_DB_NAME")
+    b_engine_db_user: str = Field(default="root", alias="B_ENGINE_DB_USER")
+    b_engine_db_password: str = Field(default="", alias="B_ENGINE_DB_PASSWORD")
+    b_engine_db_password_env: str = Field(default="BLOG_ENGINE_DB_PASSWORD", alias="B_ENGINE_DB_PASSWORD_ENV")
+    b_engine_db_charset: str = Field(default="utf8mb4", alias="B_ENGINE_DB_CHARSET")
     b_engine_system_role: str = Field(default="", alias="B_ENGINE_SYSTEM_ROLE")
     prompt_template: str = Field(
         default=(
-            "너는 네이버에서 활동하는 한국 OTT 리뷰 블로거야. 친구에게 추천하듯 자연스럽고 트렌디한 캐주얼 존댓말(해요체)로만 써줘. 반말은 절대 사용하지 마. "
-            "첫 문단은 가벼운 인사로 시작해줘(예: 안녕하세요, 오늘은 ...). "
-            "딱딱한 분석체 대신 솔직한 감상, 재밌었던 장면, 아쉬웠던 포인트를 균형 있게 담아줘. "
-            "줄거리 파트는 가능한 한 상세하게 반영하되 시간순 전개가 보이게 정리하고, 작품의 호기심을 자극할 정도로 정보 밀도를 높여줘. "
-            "감상평만 쓰지 말고 줄거리 설명 비중도 충분히 확보해줘. 단, 결말 핵심 스포일러는 피하고 중후반 반전은 완곡하게 표현해줘. "
-            "문단 가독성을 위해 필요한 경우에만 Markdown 서식(굵게, 리스트, 인용문)을 자연스럽게 사용해줘. 과도한 장식은 금지해줘. "
-            "문장은 너무 길게 붙이지 말고, 문장 끝(.,!,?) 뒤에는 자연스럽게 줄바꿈해 가독성을 높여줘. "
-            "이모지는 문맥에 맞게 자연스럽게 사용해줘(본문 전체 1~4개 권장). "
-            "트렌디한 후보: 🫠 🫶 🔥 ✨ 👀 💥 😵‍💫 😭 🤭 🥹 😮‍💨 🧠 🎬. "
-            "같은 이모지 반복은 피하고, 억지 텐션은 금지해줘. "
-            "제목은 너무 길지 않게 20자 내외로 매력적으로 작성해줘. "
+            "너는 네이버에서 활동하는 한국 OTT 리뷰 블로거야. 아래 정보를 바탕으로 '끝까지 읽히는' 리뷰를 작성해줘. "
+            "말투는 캐주얼 존댓말(해요체)만 사용하고 반말은 금지해. "
+            "[핵심 목표] 몰입감, 후킹, 가독성, 정보 밀도, 신뢰감을 동시에 만족. "
+            "[도입 규칙] 첫 3문장은 반드시 후킹 구조로 작성: ①공감/질문 또는 강한 한 줄 ②작품의 핵심 갈등 티저 ③이 글을 읽어야 할 이유. "
+            "[전개 규칙] 줄거리 설명 비중을 충분히 확보하고(시간순), 인물 선택/갈등 변화/분위기 전환 포인트를 구체적으로 써줘. "
+            "감상평만 나열하지 말고 '왜 재미있는지/왜 호불호 갈리는지' 근거를 붙여줘. "
+            "결말 핵심 스포일러는 피하고, 중후반 반전은 완곡하게 표현해. "
+            "[가독성 규칙] 문장은 짧고 리듬감 있게. 문장 끝(.,!,?) 뒤에는 자연 줄바꿈. 필요하면 Markdown(굵게/리스트/인용) 사용. "
+            "[후킹 규칙] 섹션 말미에 다음 문단이 궁금해지도록 짧은 오픈 루프를 1문장 넣어줘. "
+            "[반복 방지] 도입 방식(질문형/고백형/상황형/비교형/한줄평형), 섹션 제목 패턴, 마무리 톤을 매번 다르게 섞어 써줘. "
+            "같은 표현/같은 문장 구조/같은 클리셰 반복 금지. 특히 '안녕하세요 오늘은', '추천드립니다', '정리해봤어요' 남발 금지. "
+            "[이모지 규칙] 문맥에 맞게 1~4개만 자연 사용. 트렌디 후보: 🫠 🫶 🔥 ✨ 👀 💥 😵‍💫 😭 🤭 🥹 😮‍💨 🧠 🎬. 반복/억지 텐션 금지. "
+            "[출력 품질] 정보는 구체적이고 문장은 생동감 있게, 하지만 과장/허위/추측은 금지. "
+            "제목은 18~24자 내외로 강하게 후킹되게. "
             "정보: 제목={title}, 줄거리={overview}, 원본줄거리={original_overview}, 보강줄거리={enriched_overview}, 컨텍스트={overview_context}, 평점={rating}, 장르={genres}, 연도={year}. "
             "반드시 JSON(title, sections, tags, meta_description)으로만 출력해."
         ),
@@ -125,6 +138,27 @@ class Settings(BaseSettings):
             if secret:
                 return secret
         return self.enrich_tavily_api_key
+
+    @property
+    def b_engine_effective_db_password(self) -> str:
+        if self.b_engine_db_password_env:
+            secret = os.getenv(self.b_engine_db_password_env, "")
+            if secret:
+                return secret
+        return self.b_engine_db_password
+
+    @property
+    def b_engine_sqlalchemy_url(self) -> str:
+        user_encoded = quote_plus(self.b_engine_db_user)
+        password = self.b_engine_effective_db_password
+        if password:
+            auth = f"{user_encoded}:{quote_plus(password)}@"
+        else:
+            auth = f"{user_encoded}@"
+        return (
+            f"{self.b_engine_db_driver}://{auth}{self.b_engine_db_host}:{self.b_engine_db_port}/"
+            f"{self.b_engine_db_name}?charset={self.b_engine_db_charset}"
+        )
 
 
 @lru_cache

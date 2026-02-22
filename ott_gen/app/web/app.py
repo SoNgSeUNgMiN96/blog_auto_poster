@@ -21,12 +21,14 @@ def _candidate_card(c: Any) -> str:
     status_bg = {
         "queued": "#dbeafe",
         "generating": "#fef3c7",
+        "submitted": "#ede9fe",
         "generated": "#dcfce7",
         "failed": "#fee2e2",
     }.get(status, "#e5e7eb")
     status_text = {
         "queued": "대기",
         "generating": "생성중",
+        "submitted": "제출됨",
         "generated": "생성됨",
         "failed": "실패",
     }.get(status, status or "-")
@@ -67,7 +69,7 @@ def _candidate_card(c: Any) -> str:
           <div style='margin-top:10px;'>
             {"<form method='post' action='/admin/enrich/" + str(c.id) + "' style='display:inline;margin-right:6px;'><button style='border:none;background:#2563eb;color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer;'>줄거리 보강</button></form><form method='post' action='/admin/generate/" + str(c.id) + "' style='display:inline;'><button style='border:none;background:#0f766e;color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer;'>이 글감 생성</button></form>" if status == "queued" else ""}
             {"<form method='post' action='/admin/reset/" + str(c.id) + "' style='display:inline;' onsubmit=\"return confirm('실패 항목을 복구하여 대기열로 보낼까요?');\"><button style='border:none;background:#b45309;color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer;'>실패 복구</button></form>" if status == "failed" else ""}
-            {"<form method='post' action='/admin/reset/" + str(c.id) + "' style='display:inline;margin-right:6px;' onsubmit=\"return confirm('생성 플래그를 해제하고 다시 대기로 돌릴까요?');\"><button style='border:none;background:#b45309;color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer;'>플래그 해제</button></form><form method='post' action='/admin/delete/" + str(c.id) + "' style='display:inline;' onsubmit=\"return confirm('이 항목을 삭제할까요?');\"><button style='border:none;background:#6b7280;color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer;'>항목 삭제</button></form>" if status in {"generated", "generating"} else ""}
+            {"<form method='post' action='/admin/reset/" + str(c.id) + "' style='display:inline;margin-right:6px;' onsubmit=\"return confirm('생성 플래그를 해제하고 다시 대기로 돌릴까요?');\"><button style='border:none;background:#b45309;color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer;'>플래그 해제</button></form><form method='post' action='/admin/delete/" + str(c.id) + "' style='display:inline;' onsubmit=\"return confirm('이 항목을 삭제할까요?');\"><button style='border:none;background:#6b7280;color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer;'>항목 삭제</button></form>" if status in {"generated", "generating", "submitted"} else ""}
           </div>
         </div>
       </div>
@@ -84,7 +86,7 @@ def dashboard(
     overview_filter: str = "all",
     msg: str = "",
 ) -> str:
-    status = status if status in {"queued", "generating", "generated", "failed"} else "queued"
+    status = status if status in {"queued", "generating", "submitted", "generated", "failed"} else "queued"
     overview_filter = overview_filter if overview_filter in {"all", "long"} else "all"
     page = max(1, page)
     page_size = min(300, max(5, page_size))
@@ -120,6 +122,7 @@ def dashboard(
     next_link = f"/?status={status}&overview_filter={overview_filter}&page={min(total_pages, page+1)}&page_size={page_size}"
     queued_tab = f"/?status=queued&overview_filter={overview_filter}&page=1&page_size={page_size}"
     generating_tab = f"/?status=generating&overview_filter={overview_filter}&page=1&page_size={page_size}"
+    submitted_tab = f"/?status=submitted&overview_filter={overview_filter}&page=1&page_size={page_size}"
     generated_tab = f"/?status=generated&overview_filter={overview_filter}&page=1&page_size={page_size}"
     failed_tab = f"/?status=failed&overview_filter={overview_filter}&page=1&page_size={page_size}"
     filter_all = f"/?status={status}&overview_filter=all&page=1&page_size={page_size}"
@@ -152,6 +155,7 @@ def dashboard(
         <div style='display:flex;gap:8px;margin:10px 0 6px;'>
           <a href='{queued_tab}' style='padding:6px 10px;border-radius:8px;background:{'#e0f2fe' if status=='queued' else '#eef2f7'};text-decoration:none;color:#111;'>Queued</a>
           <a href='{generating_tab}' style='padding:6px 10px;border-radius:8px;background:{'#e0f2fe' if status=='generating' else '#eef2f7'};text-decoration:none;color:#111;'>Generating</a>
+          <a href='{submitted_tab}' style='padding:6px 10px;border-radius:8px;background:{'#e0f2fe' if status=='submitted' else '#eef2f7'};text-decoration:none;color:#111;'>Submitted</a>
           <a href='{generated_tab}' style='padding:6px 10px;border-radius:8px;background:{'#e0f2fe' if status=='generated' else '#eef2f7'};text-decoration:none;color:#111;'>Generated</a>
           <a href='{failed_tab}' style='padding:6px 10px;border-radius:8px;background:{'#e0f2fe' if status=='failed' else '#eef2f7'};text-decoration:none;color:#111;'>Failed</a>
         </div>

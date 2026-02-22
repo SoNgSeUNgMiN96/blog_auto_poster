@@ -1,6 +1,12 @@
 # blog_engine (B영역 서버)
 
-A영역에서 받은 JSON으로 콘텐츠 생성, SEO 최적화, 이미지 처리, 워드프레스 발행, 색인 요청까지 수행하는 FastAPI 서버입니다.
+A영역에서 받은 JSON을 큐에 적재하고, 배치 워커가 콘텐츠 생성/SEO/이미지 처리/워드프레스 발행/색인 요청을 처리하는 엔진입니다.
+
+## 권장 운영 요약 (API 서버 상시 미구동)
+
+1. `ott_gen`이 blog_engine DB `posts` 테이블에 직접 큐 적재
+2. `blog_engine`은 API 서버를 띄우지 않고 워커만 주기 실행
+3. 워커가 queued 건을 생성/발행/색인 처리
 
 ## 1) 실행 준비 (Poetry)
 
@@ -49,15 +55,22 @@ APP_ENV=dev poetry run alembic -c alembic.ini upgrade head
 `AUTO_CREATE_TABLES=true`인 경우 서버 시작 시 `posts`, `images` 테이블이 자동 생성됩니다.
 다만 DB 계정 인증이 실패하면 자동 생성도 실행되지 않습니다.
 
-## 4) 서버 실행
+## 4) API 서버 실행 (선택)
 
 ```bash
 APP_ENV=dev poetry run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
+기본 권장 모드:
+- `PROCESSING_MODE=queue`: `/generate-post`는 적재만 수행
+- `python -m app.worker`: 큐 처리 실행 (cron 1시간 주기 권장)
+
+`ott_gen`을 `B_ENGINE_SUBMIT_MODE=db_queue`로 쓰면 `/generate-post` 호출 없이 blog_engine DB `posts` 테이블에 직접 적재할 수 있어, B엔진 API 서버 상시 구동이 필요 없습니다.
+
 ## 5) API
 
 - `POST /generate-post`
+- `POST /process-queue?limit=20`
 - `POST /publish/{post_id}`
 - `GET /status/{post_id}`
 - `GET /health`
@@ -81,6 +94,7 @@ APP_ENV=dev poetry run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 5. `WORDPRESS_BASE_URL`, `WORDPRESS_USERNAME`, `WORDPRESS_APP_PASSWORD` (발행 기능 사용 시)
 6. `GOOGLE_SERVICE_ACCOUNT_FILE` (Google 색인 사용 시)
 - 이미지 최적화: `IMAGE_MAX_WIDTH`, `IMAGE_MAX_HEIGHT`, `IMAGE_WEBP_QUALITY`, `IMAGE_KEEP_ORIGINAL`
+- 큐 처리 모드: `PROCESSING_MODE=sync|queue`, `BATCH_PROCESS_LIMIT=20`
 
 카테고리 자동 지정:
 - `WORDPRESS_CATEGORY_MAP=ott:OTT 리뷰,it:IT 리뷰` 형식으로 매핑
@@ -108,3 +122,19 @@ APP_ENV=dev poetry run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 `auto_publish=true`면 generate 직후 WordPress 발행까지 한 번에 수행합니다.
+
+## 배치 워커 실행
+
+수동 1회 실행:
+
+```bash
+APP_ENV=dev poetry run python -m app.worker --limit 20
+```
+
+cron(매시간 0분):
+
+```cron
+0 * * * * cd /Users/seungminsong/Desktop/coding/blog_auto_poster/blog_engine && APP_ENV=dev /Users/seungminsong/.local/bin/poetry run python -m app.worker --limit 20 >> logs/worker.log 2>&1
+```
+
+권장: `PROCESSING_MODE=queue`로 두고 워커만 운영.

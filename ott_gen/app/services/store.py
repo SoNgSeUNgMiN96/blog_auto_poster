@@ -126,7 +126,7 @@ class Store:
             ).fetchone()
             if row:
                 current_status = str(row["status"] or "")
-                if current_status in {"generated", "generating"}:
+                if current_status in {"generated", "generating", "submitted"}:
                     return False
                 conn.execute(
                     """
@@ -209,6 +209,19 @@ class Store:
             ).fetchall()
         return [self._to_item(r) for r in rows]
 
+    def list_recent_generated(self, limit: int = 12) -> list[CandidateItem]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM candidates
+                WHERE status='generated'
+                ORDER BY datetime(COALESCE(generated_at, updated_at)) DESC
+                LIMIT ?
+                """,
+                (max(1, limit),),
+            ).fetchall()
+        return [self._to_item(r) for r in rows]
+
     def get_candidate(self, candidate_id: int) -> CandidateItem | None:
         with self._conn() as conn:
             row = conn.execute("SELECT * FROM candidates WHERE id=?", (candidate_id,)).fetchone()
@@ -265,6 +278,18 @@ class Store:
                 """
                 UPDATE candidates
                 SET status='generated', generated_at=?, b_post_id=?, error_message=NULL, updated_at=?
+                WHERE id=?
+                """,
+                (now, b_post_id, now, candidate_id),
+            )
+
+    def mark_submitted(self, candidate_id: int, b_post_id: int | None) -> None:
+        now = self._now()
+        with self._conn() as conn:
+            conn.execute(
+                """
+                UPDATE candidates
+                SET status='submitted', generated_at=?, b_post_id=?, error_message=NULL, updated_at=?
                 WHERE id=?
                 """,
                 (now, b_post_id, now, candidate_id),

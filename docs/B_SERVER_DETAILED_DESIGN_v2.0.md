@@ -1,6 +1,6 @@
 # OTT 리뷰 블로그 자동화 프로젝트
 
-# B영역 서버단 상세 설계서 (v2.3 – Implementation Ready)
+# B영역 서버단 상세 설계서 (v2.4 – Implementation Ready)
 
 ---
 
@@ -116,7 +116,7 @@ blog_engine/
 - seo_title
 - meta_description
 - slug
-- status (draft/generated/published/failed)
+- status (queued/draft/processing/generated/published/failed)
 - wp_post_id
 - created_at
 - published_at
@@ -139,24 +139,33 @@ blog_engine/
 입력: A영역 JSON
 동작:
 
-1. DB 저장 (status=draft)
-2. Content Generator 실행
-3. SEO Engine 실행
-4. 이미지 다운로드 및 저장
-5. HTML 생성
-6. DB 업데이트 (status=generated)
+1. DB 저장 (status=queued)
+2. 요청 적재 후 즉시 응답 (queue 모드)
 
 옵션:
-- `auto_publish=true` 전달 시 생성 직후 WordPress 발행까지 연속 수행
+- `PROCESSING_MODE=sync`인 경우 즉시 생성/발행 동작 가능
+- `auto_publish=true`는 실제 처리 시점에 반영
 
 응답:
 
 ```json
 {
   "post_id": 1,
-  "status": "generated"
+  "status": "queued"
 }
 ```
+
+## POST /process-queue
+
+동작:
+
+1. queued/draft 상태 글을 오래된 순으로 선택
+2. Content Generator 실행
+3. SEO Engine 실행
+4. 이미지 다운로드 및 저장
+5. HTML 생성
+6. auto_publish=true이면 WordPress 발행 및 색인 요청
+7. 상태 업데이트 (generated/published/failed)
 
 ## POST /publish/{post_id}
 
@@ -259,9 +268,11 @@ Jinja2 템플릿 사용.
 
 ---
 
-# 11. 비동기 처리 전략
+# 11. 처리 전략
 
-- 초기: FastAPI BackgroundTasks
+- 기본: Queue + Worker 배치
+  - API는 요청 적재
+  - `python -m app.worker`가 주기적으로 큐 처리
 - 확장: Redis + Celery
 
 ---
@@ -293,4 +304,4 @@ Jinja2 템플릿 사용.
 
 ---
 
-현재 버전: v2.3
+현재 버전: v2.4

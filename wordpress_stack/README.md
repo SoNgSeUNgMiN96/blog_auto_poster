@@ -3,6 +3,8 @@
 `blog_engine`와 분리된 로컬 WordPress 운영 폴더입니다.
 로컬 HTTP 환경에서도 Application Password를 쓸 수 있도록 `mu-plugins/allow-app-passwords-local.php`를 마운트합니다.
 
+큐 기반 운영에서도 WordPress는 독립적으로 유지되며, `blog_engine` 워커가 발행 시점에만 접근합니다.
+
 ## 1) 준비
 
 ```bash
