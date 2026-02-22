@@ -1,0 +1,21 @@
+[project]
+name = "a-engine"
+version = "0.1.0"
+description = "A-zone OTT auto collector and B-zone publisher client"
+authors = [{ name = "seungminsong", email = "dev@example.com" }]
+readme = "README.md"
+requires-python = ">=3.11,<4.0"
+dynamic = ["dependencies"]
+
+[tool.poetry]
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.11"
+requests = "2.32.5"
+pydantic-settings = "2.10.1"
+apscheduler = "3.11.0"
+
+[build-system]
+requires = ["poetry-core>=1.9.0"]
+build-backend = "poetry.core.masonry.api"

@@ -1,0 +1,56 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Python cache / build
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+dist/
+build/
+
+# Virtualenvs
+.venv/
+venv/
+
+# Logs / runtime
+*.log
+*.pid
+*.out
+
+# Local environment files (keep examples)
+.env
+.env.*
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.dev.example
+!**/.env.prod.example
+
+# Local DB / data artifacts
+*.db
+*.sqlite
+*.sqlite3
+*.sql
+**/data/
+**/media/
+
+# Project-specific runtime data
+a_engine/data/
+ott_gen/data/
+blog_engine/media/
+wordpress_stack/data/
+
+# Keep wordpress helper dirs, ignore generated runtime volume
+!wordpress_stack/mu-plugins/
+!wordpress_stack/scripts/
+!wordpress_stack/mariadb-init/

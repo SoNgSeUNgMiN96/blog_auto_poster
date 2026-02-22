@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+env/.env.dev
+env/.env.prod
+env/.env
+media/
