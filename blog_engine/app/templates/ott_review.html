@@ -68,5 +68,12 @@
   </section>
   {% endif %}
 
+  {% if tmdb_rating %}
+  <section style="margin:8px 0 20px;padding:10px 12px;border:1px solid #e5e7eb;border-radius:10px;background:#f8fafc;color:#374151;">
+    <strong style="color:#111827;">TMDB 평점</strong>
+    <span style="margin-left:6px;">{{ tmdb_rating }}</span>
+  </section>
+  {% endif %}
+
   <!-- 광고 위치 placeholder -->
 </article>

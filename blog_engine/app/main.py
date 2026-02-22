@@ -234,6 +234,7 @@ def generate_post(
                 "tags": seo["tags"],
                 "poster_url": poster_url,
                 "still_urls": still_urls,
+                "tmdb_rating": str(payload.prompt_variables.get("rating", "") or "").strip(),
             },
         )
 
