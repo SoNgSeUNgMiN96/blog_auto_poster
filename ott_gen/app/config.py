@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     timezone: str = Field(default="Asia/Seoul", alias="TIMEZONE")
 
     b_engine_base_url: str = Field(default="http://127.0.0.1:8000", alias="B_ENGINE_BASE_URL")
-    b_engine_submit_mode: str = Field(default="api", alias="B_ENGINE_SUBMIT_MODE")
+    b_engine_submit_mode: str = Field(default="db_queue", alias="B_ENGINE_SUBMIT_MODE")
     b_engine_admin_token: str = Field(default="", alias="B_ENGINE_ADMIN_TOKEN")
     b_engine_render_template: str = Field(default="ott_review.html", alias="B_ENGINE_RENDER_TEMPLATE")
     b_engine_auto_publish: bool = Field(default=True, alias="B_ENGINE_AUTO_PUBLISH")
