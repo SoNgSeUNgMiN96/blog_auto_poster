@@ -1,2 +1,11 @@
 .env
 data/
+
+# keep only custom theme in git
+!data/
+data/**
+!data/html/
+!data/html/wp-content/
+!data/html/wp-content/themes/
+!data/html/wp-content/themes/ott-trendy-lite/
+!data/html/wp-content/themes/ott-trendy-lite/**

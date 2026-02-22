@@ -54,3 +54,12 @@ wordpress_stack/data/
 !wordpress_stack/mu-plugins/
 !wordpress_stack/scripts/
 !wordpress_stack/mariadb-init/
+
+# Track only custom WordPress theme files (keep other runtime data ignored)
+!wordpress_stack/data/
+wordpress_stack/data/**
+!wordpress_stack/data/html/
+!wordpress_stack/data/html/wp-content/
+!wordpress_stack/data/html/wp-content/themes/
+!wordpress_stack/data/html/wp-content/themes/ott-trendy-lite/
+!wordpress_stack/data/html/wp-content/themes/ott-trendy-lite/**
