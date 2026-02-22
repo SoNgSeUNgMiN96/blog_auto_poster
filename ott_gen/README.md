@@ -15,6 +15,7 @@ A영역 대체 모듈입니다.
 - 생성 완료 항목은 `생성됨`으로 고정되어 중복 생성되지 않음
 - DB 큐 직적재 모드(`B_ENGINE_SUBMIT_MODE=db_queue`) 지원: B엔진 API 서버 없이 blog_engine DB에 바로 적재
 - 재생성하려면 웹에서 `플래그 해제` 후 다시 생성
+- `submitted` 항목은 대시보드 `제출 상태 동기화`로 blog_engine 실제 결과(generated/failed) 반영 가능
 
 ## 큐 구조(중요)
 
@@ -87,6 +88,8 @@ APP_ENV=dev poetry run python -m app.web.run
 - 소스 파싱 실행
 - 오늘 남은 수량만 생성
 - 개별 글감 생성 버튼
+- 제출 상태 동기화(전체/개별)
+- blog_engine 실패 반영 후 `실패 복구`로 재큐잉
 
 끄기:
 - 실행 터미널에서 `Ctrl + C`

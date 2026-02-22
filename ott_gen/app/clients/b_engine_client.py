@@ -23,6 +23,14 @@ class BEngineClient:
             return self._submit_via_api(payload)
         raise RuntimeError(f"Unsupported B_ENGINE_SUBMIT_MODE: {self.settings.b_engine_submit_mode}")
 
+    def get_post_status(self, post_id: int) -> dict[str, Any]:
+        submit_mode = (self.settings.b_engine_submit_mode or "api").strip().lower()
+        if submit_mode == "db_queue":
+            return self._get_post_status_from_b_engine_db(post_id)
+        if submit_mode == "api":
+            return self._get_post_status_via_api(post_id)
+        raise RuntimeError(f"Unsupported B_ENGINE_SUBMIT_MODE: {self.settings.b_engine_submit_mode}")
+
     def _submit_via_api(self, payload: dict[str, Any]) -> dict[str, Any]:
         headers = {"Content-Type": "application/json"}
         if self.settings.b_engine_admin_token:
@@ -41,15 +49,7 @@ class BEngineClient:
         return response.json()
 
     def _enqueue_to_b_engine_db(self, payload: dict[str, Any]) -> dict[str, Any]:
-        connection = pymysql.connect(
-            host=self.settings.b_engine_db_host,
-            port=self.settings.b_engine_db_port,
-            user=self.settings.b_engine_db_user,
-            password=self.settings.b_engine_effective_db_password,
-            database=self.settings.b_engine_db_name,
-            charset=self.settings.b_engine_db_charset,
-            autocommit=True,
-        )
+        connection = self._db_connect()
         try:
             now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
             raw_json = json.dumps(payload, ensure_ascii=False)
@@ -67,3 +67,68 @@ class BEngineClient:
             raise RuntimeError(f"B-engine DB enqueue failed: {exc}") from exc
         finally:
             connection.close()
+
+    def _get_post_status_via_api(self, post_id: int) -> dict[str, Any]:
+        headers: dict[str, str] = {}
+        if self.settings.b_engine_admin_token:
+            headers["x-admin-token"] = self.settings.b_engine_admin_token
+        response = requests.get(
+            f"{self.base_url}/status/{post_id}",
+            headers=headers,
+            timeout=30,
+        )
+        if response.status_code >= 400:
+            raise RuntimeError(
+                f"B-engine status failed: status={response.status_code}, body={response.text[:1000]}"
+            )
+        data = response.json()
+        return {
+            "post_id": int(data.get("post_id", post_id) or post_id),
+            "status": str(data.get("status", "") or "").strip().lower(),
+            "last_error": str(data.get("last_error", "") or "").strip(),
+        }
+
+    def _get_post_status_from_b_engine_db(self, post_id: int) -> dict[str, Any]:
+        connection = self._db_connect()
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT id, status, raw_input
+                    FROM posts
+                    WHERE id=%s
+                    """,
+                    (post_id,),
+                )
+                row = cursor.fetchone()
+            if not row:
+                raise RuntimeError(f"B-engine post not found: post_id={post_id}")
+            raw_input = row.get("raw_input")
+            if isinstance(raw_input, str):
+                try:
+                    raw_input = json.loads(raw_input)
+                except Exception:
+                    raw_input = {}
+            if not isinstance(raw_input, dict):
+                raw_input = {}
+            return {
+                "post_id": int(row.get("id", post_id) or post_id),
+                "status": str(row.get("status", "") or "").strip().lower(),
+                "last_error": str(raw_input.get("last_error", "") or "").strip(),
+            }
+        except Exception as exc:
+            raise RuntimeError(f"B-engine DB status failed: {exc}") from exc
+        finally:
+            connection.close()
+
+    def _db_connect(self) -> pymysql.connections.Connection:
+        return pymysql.connect(
+            host=self.settings.b_engine_db_host,
+            port=self.settings.b_engine_db_port,
+            user=self.settings.b_engine_db_user,
+            password=self.settings.b_engine_effective_db_password,
+            database=self.settings.b_engine_db_name,
+            charset=self.settings.b_engine_db_charset,
+            autocommit=True,
+            cursorclass=pymysql.cursors.DictCursor,
+        )

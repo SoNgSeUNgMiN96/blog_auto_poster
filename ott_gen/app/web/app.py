@@ -64,11 +64,14 @@ def _candidate_card(c: Any) -> str:
           </div>
           <div style='color:#666;margin-top:6px;'>평점 {html.escape(c.rating)} | {html.escape(c.genres)} | {html.escape(c.year)}</div>
           <div style='color:#666;margin-top:4px;'>Provider: {html.escape(c.provider_names)}</div>
+          <div style='color:#666;margin-top:4px;'>B Post ID: {html.escape(str(c.b_post_id or "-"))}</div>
+          {"<div style='color:#b91c1c;margin-top:4px;font-size:13px;'>실패사유: " + html.escape(c.error_message or "") + "</div>" if status == "failed" else ""}
           {overview_block}
           <div style='margin-top:10px;display:flex;align-items:center;overflow-x:auto;'>{stills_html}</div>
           <div style='margin-top:10px;'>
             {"<form method='post' action='/admin/enrich/" + str(c.id) + "' style='display:inline;margin-right:6px;'><button style='border:none;background:#2563eb;color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer;'>줄거리 보강</button></form><form method='post' action='/admin/generate/" + str(c.id) + "' style='display:inline;'><button style='border:none;background:#0f766e;color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer;'>이 글감 생성</button></form>" if status == "queued" else ""}
             {"<form method='post' action='/admin/reset/" + str(c.id) + "' style='display:inline;' onsubmit=\"return confirm('실패 항목을 복구하여 대기열로 보낼까요?');\"><button style='border:none;background:#b45309;color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer;'>실패 복구</button></form>" if status == "failed" else ""}
+            {"<form method='post' action='/admin/sync/" + str(c.id) + "' style='display:inline;margin-right:6px;'><button style='border:none;background:#4f46e5;color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer;'>제출 상태 동기화</button></form>" if status == "submitted" else ""}
             {"<form method='post' action='/admin/reset/" + str(c.id) + "' style='display:inline;margin-right:6px;' onsubmit=\"return confirm('생성 플래그를 해제하고 다시 대기로 돌릴까요?');\"><button style='border:none;background:#b45309;color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer;'>플래그 해제</button></form><form method='post' action='/admin/delete/" + str(c.id) + "' style='display:inline;' onsubmit=\"return confirm('이 항목을 삭제할까요?');\"><button style='border:none;background:#6b7280;color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer;'>항목 삭제</button></form>" if status in {"generated", "generating", "submitted"} else ""}
           </div>
         </div>
@@ -150,6 +153,9 @@ def dashboard(
           <form method='post' action='/admin/generate-batch' style='display:inline;margin-left:8px;'>
             <button style='border:none;background:#7c3aed;color:#fff;padding:9px 14px;border-radius:8px;cursor:pointer;'>오늘 남은 수량만 생성</button>
           </form>
+          <form method='post' action='/admin/sync-submitted' style='display:inline;margin-left:8px;'>
+            <button style='border:none;background:#4f46e5;color:#fff;padding:9px 14px;border-radius:8px;cursor:pointer;'>제출 상태 동기화</button>
+          </form>
         </div>
 
         <div style='display:flex;gap:8px;margin:10px 0 6px;'>
@@ -196,6 +202,16 @@ def generate_batch() -> RedirectResponse:
     return RedirectResponse(url="/", status_code=303)
 
 
+@app.post("/admin/sync-submitted")
+def sync_submitted() -> RedirectResponse:
+    res = engine.sync_submitted_statuses()
+    msg = (
+        f"동기화 완료 checked={res['submitted_checked']} "
+        f"generated={res['to_generated']} failed={res['to_failed']} unchanged={res['unchanged']}"
+    )
+    return RedirectResponse(url=f"/?msg={quote_plus(msg)}", status_code=303)
+
+
 @app.post("/admin/generate/{candidate_id}")
 def generate_one(candidate_id: int) -> RedirectResponse:
     try:
@@ -203,6 +219,16 @@ def generate_one(candidate_id: int) -> RedirectResponse:
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     return RedirectResponse(url="/?msg=생성+완료", status_code=303)
+
+
+@app.post("/admin/sync/{candidate_id}")
+def sync_one(candidate_id: int) -> RedirectResponse:
+    try:
+        res = engine.sync_submitted_one(candidate_id)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    msg = f"개별 동기화 완료 status={res.get('status')} changed={res.get('changed')}"
+    return RedirectResponse(url=f"/?msg={quote_plus(msg)}", status_code=303)
 
 
 @app.post("/admin/reset/{candidate_id}")

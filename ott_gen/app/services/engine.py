@@ -309,6 +309,76 @@ class OTTGenEngine:
             "reason": str(result.get("reason") or ""),
         }
 
+    def sync_submitted_statuses(self, limit: int = 200) -> dict[str, int]:
+        submitted = self.store.list_candidates(status="submitted", limit=max(1, limit), offset=0)
+        synced = 0
+        changed_to_generated = 0
+        changed_to_failed = 0
+        unchanged = 0
+
+        for item in submitted:
+            b_post_id = int(item.b_post_id or 0)
+            if b_post_id <= 0:
+                self.store.mark_failed(item.id, "B post id missing on submitted item")
+                changed_to_failed += 1
+                continue
+            try:
+                status_payload = self.b_engine.get_post_status(b_post_id)
+                be_status = str(status_payload.get("status", "") or "").strip().lower()
+                last_error = str(status_payload.get("last_error", "") or "").strip()
+            except Exception as exc:
+                # Sync error should not change candidate state.
+                self.logger.warning(
+                    "sync status failed | candidate_id=%s b_post_id=%s error=%s",
+                    item.id,
+                    b_post_id,
+                    exc,
+                )
+                unchanged += 1
+                continue
+
+            if be_status in {"generated", "published"}:
+                self.store.mark_generated(item.id, b_post_id)
+                changed_to_generated += 1
+            elif be_status == "failed":
+                self.store.mark_failed(item.id, last_error or f"blog_engine failed (post_id={b_post_id})")
+                changed_to_failed += 1
+            else:
+                unchanged += 1
+            synced += 1
+
+        return {
+            "submitted_checked": len(submitted),
+            "synced": synced,
+            "to_generated": changed_to_generated,
+            "to_failed": changed_to_failed,
+            "unchanged": unchanged,
+        }
+
+    def sync_submitted_one(self, candidate_id: int) -> dict[str, int | str]:
+        item = self.store.get_candidate(candidate_id)
+        if not item:
+            raise ValueError("Candidate not found")
+        if item.status != "submitted":
+            return {"candidate_id": candidate_id, "status": item.status, "changed": 0}
+
+        b_post_id = int(item.b_post_id or 0)
+        if b_post_id <= 0:
+            self.store.mark_failed(item.id, "B post id missing on submitted item")
+            return {"candidate_id": candidate_id, "status": "failed", "changed": 1}
+
+        status_payload = self.b_engine.get_post_status(b_post_id)
+        be_status = str(status_payload.get("status", "") or "").strip().lower()
+        last_error = str(status_payload.get("last_error", "") or "").strip()
+
+        if be_status in {"generated", "published"}:
+            self.store.mark_generated(item.id, b_post_id)
+            return {"candidate_id": candidate_id, "status": "generated", "changed": 1}
+        if be_status == "failed":
+            self.store.mark_failed(item.id, last_error or f"blog_engine failed (post_id={b_post_id})")
+            return {"candidate_id": candidate_id, "status": "failed", "changed": 1}
+        return {"candidate_id": candidate_id, "status": "submitted", "changed": 0}
+
     def _enrich_for_manual_generate(self, item: CandidateItem, force: bool = False) -> CandidateItem:
         if not self.settings.enrich_overview:
             return item
