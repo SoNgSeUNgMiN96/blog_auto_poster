@@ -63,3 +63,6 @@ wordpress_stack/data/**
 !wordpress_stack/data/html/wp-content/themes/
 !wordpress_stack/data/html/wp-content/themes/ott-trendy-lite/
 !wordpress_stack/data/html/wp-content/themes/ott-trendy-lite/**
+
+blog_engine/.env
+ott_gen/.env
