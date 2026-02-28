@@ -47,7 +47,7 @@ class TMDBClient:
         return "release_date.desc" if media_type == "movie" else "first_air_date.desc"
 
     def fetch_details(self, media_type: str, tmdb_id: int) -> dict[str, Any]:
-        return self._get(f"/{media_type}/{tmdb_id}")
+        return self._get(f"/{media_type}/{tmdb_id}", append_to_response="credits")
 
     def fetch_watch_providers(self, media_type: str, tmdb_id: int) -> dict[str, Any]:
         return self._get(f"/{media_type}/{tmdb_id}/watch/providers")

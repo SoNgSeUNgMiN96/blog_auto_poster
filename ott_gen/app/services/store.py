@@ -21,6 +21,7 @@ class CandidateItem:
     genres: str
     year: str
     provider_names: str
+    extra_meta: dict
     poster_url: str
     still_urls: list[str]
     status: str
@@ -57,6 +58,7 @@ class Store:
                     genres TEXT NOT NULL,
                     year TEXT NOT NULL,
                     provider_names TEXT NOT NULL,
+                    extra_meta TEXT NOT NULL DEFAULT '{}',
                     poster_url TEXT NOT NULL,
                     still_urls TEXT NOT NULL,
                     status TEXT NOT NULL DEFAULT 'queued',
@@ -71,6 +73,7 @@ class Store:
             )
             self._ensure_column(conn, "candidates", "original_overview", "TEXT NOT NULL DEFAULT ''")
             self._ensure_column(conn, "candidates", "enriched_overview", "TEXT NOT NULL DEFAULT ''")
+            self._ensure_column(conn, "candidates", "extra_meta", "TEXT NOT NULL DEFAULT '{}'")
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS daily_stats (
@@ -113,6 +116,7 @@ class Store:
         genres: str,
         year: str,
         provider_names: str,
+        extra_meta: dict,
         poster_url: str,
         still_urls: list[str],
         dedup_days: int,
@@ -132,7 +136,7 @@ class Store:
                     """
                     UPDATE candidates
                     SET source=?, title=?, overview=?, original_overview=?, enriched_overview=?, rating=?, genres=?, year=?,
-                        provider_names=?, poster_url=?, still_urls=?,
+                        provider_names=?, extra_meta=?, poster_url=?, still_urls=?,
                         status='queued', error_message=NULL, updated_at=?
                     WHERE id=?
                     """,
@@ -146,6 +150,7 @@ class Store:
                         genres,
                         year,
                         provider_names,
+                        json.dumps(extra_meta or {}, ensure_ascii=False),
                         poster_url,
                         still_json,
                         now,
@@ -158,8 +163,8 @@ class Store:
                 """
                 INSERT INTO candidates (
                     tmdb_id, media_type, source, title, overview, original_overview, enriched_overview, rating, genres, year,
-                    provider_names, poster_url, still_urls, status, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?)
+                    provider_names, extra_meta, poster_url, still_urls, status, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?)
                 """,
                 (
                     tmdb_id,
@@ -173,6 +178,7 @@ class Store:
                     genres,
                     year,
                     provider_names,
+                    json.dumps(extra_meta or {}, ensure_ascii=False),
                     poster_url,
                     still_json,
                     now,
@@ -377,6 +383,14 @@ class Store:
                 )
 
     def _to_item(self, row: sqlite3.Row) -> CandidateItem:
+        col_names = set(row.keys())
+        extra_meta_raw = row["extra_meta"] if "extra_meta" in col_names else "{}"
+        try:
+            extra_meta = json.loads(extra_meta_raw or "{}")
+            if not isinstance(extra_meta, dict):
+                extra_meta = {}
+        except Exception:
+            extra_meta = {}
         return CandidateItem(
             id=int(row["id"]),
             tmdb_id=int(row["tmdb_id"]),
@@ -390,6 +404,7 @@ class Store:
             genres=str(row["genres"]),
             year=str(row["year"]),
             provider_names=str(row["provider_names"]),
+            extra_meta=extra_meta,
             poster_url=str(row["poster_url"]),
             still_urls=json.loads(row["still_urls"] or "[]"),
             status=str(row["status"]),

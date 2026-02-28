@@ -109,6 +109,8 @@ Cloudflare/리버스프록시 환경:
 - `WORDPRESS_BASE_URL`: 내부에서 REST API 호출 가능한 주소
 - `WORDPRESS_PUBLIC_BASE_URL`: 외부 방문자가 접근하는 실제 도메인(예: `https://blog.example.com`)
 - 본문 이미지/글 URL은 `WORDPRESS_PUBLIC_BASE_URL` 기준으로 저장됩니다.
+- 로컬/외부를 동시에 쓰려면 `WORDPRESS_MEDIA_USE_RELATIVE_URLS=true` 권장
+  - 본문 이미지 URL이 `/wp-content/uploads/...` 형태로 저장되어 접속 도메인 기준으로 자동 표시됩니다.
 
 ## 요청 예시: /generate-post
 

@@ -1,4 +1,5 @@
 from datetime import datetime
+import html
 from pathlib import Path
 import logging
 import re
@@ -81,13 +82,9 @@ def _build_display_title(work_title: str, generated_title: str) -> str:
     clean_work_title = (work_title or "").strip()
     clean_generated_title = (generated_title or "").strip()
     if not clean_work_title:
-        return clean_generated_title
-    prefix = f"[{clean_work_title}]"
-    # Avoid repeating the work title in the AI-generated suffix.
-    suffix = clean_generated_title
-    if suffix.startswith(prefix):
-        suffix = suffix[len(prefix) :].strip()
+        return clean_generated_title or "리뷰"
 
+    title = clean_generated_title
     patterns = [
         re.escape(clean_work_title),
         re.escape(f"[{clean_work_title}]"),
@@ -96,22 +93,77 @@ def _build_display_title(work_title: str, generated_title: str) -> str:
         re.escape(f"《{clean_work_title}》"),
         re.escape(f"<{clean_work_title}>"),
     ]
-    suffix = re.sub("|".join(patterns), " ", suffix, flags=re.IGNORECASE).strip()
-    suffix = re.sub(r"\s+", " ", suffix).strip(" -:|,./")
-    if not suffix:
-        suffix = "리뷰"
-    return f"{prefix} {suffix}"
+    title = re.sub("|".join(patterns), " ", title, flags=re.IGNORECASE).strip()
+    title = re.sub(r"\s+", " ", title).strip(" -:|,./")
+    if not title:
+        title = "지금 보기 좋은 리뷰 포인트"
+    return f"[{clean_work_title}] {title}"
+
+
+def _normalize_provider_ko(provider_text: str) -> str:
+    raw = str(provider_text or "").strip()
+    if not raw:
+        return "OTT"
+    lowered = raw.lower()
+    mapping = {
+        "netflix": "넷플릭스",
+        "watcha": "왓챠",
+        "tving": "티빙",
+        "wavve": "웨이브",
+        "disney+": "디즈니+",
+        "disney plus": "디즈니+",
+        "coupang play": "쿠팡플레이",
+        "apple tv+": "애플TV+",
+    }
+    for key, value in mapping.items():
+        if key in lowered:
+            return value
+    return raw
+
+
+def _compose_blog_title(provider_ko: str, work_title: str, generated_title: str) -> str:
+    provider = _normalize_provider_ko(provider_ko)
+    display_title = _build_display_title(work_title, generated_title)
+    if provider == "OTT":
+        return display_title
+    return f"{display_title}, {provider}에서 감상 가능"
 
 
 def _render_section_html(content: str) -> str:
+    normalized = _apply_style_placeholders(str(content or ""))
     normalized = re.sub(r"([.!?])\s+(?=[A-Za-z0-9가-힣\"'(\[])",
                         r"\1\n",
-                        str(content or ""))
+                        normalized)
     return md.markdown(
         normalized,
         extensions=["extra", "sane_lists", "nl2br"],
         output_format="html5",
     )
+
+
+def _apply_style_placeholders(text: str) -> str:
+    # AI placeholder -> styled html/markdown conversion
+    # {{B:...}}  => markdown bold
+    # {{HL:...}} => highlighted phrase
+    # {{ACC:...}} => accent phrase
+    out = str(text or "")
+
+    def _b(match: re.Match[str]) -> str:
+        inner = html.escape(match.group(1).strip())
+        return f"**{inner}**" if inner else ""
+
+    def _hl(match: re.Match[str]) -> str:
+        inner = html.escape(match.group(1).strip())
+        return f"<span class=\"be-hl\">{inner}</span>" if inner else ""
+
+    def _acc(match: re.Match[str]) -> str:
+        inner = html.escape(match.group(1).strip())
+        return f"<span class=\"be-acc\">{inner}</span>" if inner else ""
+
+    out = re.sub(r"\{\{B:(.*?)\}\}", _b, out, flags=re.DOTALL)
+    out = re.sub(r"\{\{HL:(.*?)\}\}", _hl, out, flags=re.DOTALL)
+    out = re.sub(r"\{\{ACC:(.*?)\}\}", _acc, out, flags=re.DOTALL)
+    return out
 
 
 def _to_public_url(url: str | None) -> str | None:
@@ -137,6 +189,16 @@ def _to_public_url(url: str | None) -> str | None:
     )
 
 
+def _to_relative_media_url(url: str | None) -> str | None:
+    raw = str(url or "").strip()
+    if not raw:
+        return None
+    parsed = urlparse(raw)
+    if not parsed.path:
+        return raw
+    return urlunparse(("", "", parsed.path, parsed.params, parsed.query, parsed.fragment))
+
+
 def _mark_post_failed(db: Session, post_id: int, error_detail: str) -> None:
     db.rollback()
     failed_post = db.get(Post, post_id)
@@ -159,7 +221,8 @@ def _run_generation_pipeline(db: Session, post: Post, payload: GeneratePostReque
     generated = content_generator.generate(payload.model_dump())
     seo = SeoEngine.optimize(generated)
     work_title = str(payload.prompt_variables.get("title", "")).strip()
-    final_title = _build_display_title(work_title, seo["seo_title"])
+    provider_ko = str(payload.prompt_variables.get("primary_provider_ko", "")).strip()
+    final_title = _compose_blog_title(provider_ko, work_title, seo["seo_title"])
     seo["seo_title"] = final_title
     seo["slug"] = slugify(final_title)[:120] or f"post-{post.id}"
 
@@ -191,6 +254,20 @@ def _run_generation_pipeline(db: Session, post: Post, payload: GeneratePostReque
     ]
 
     renderer = HtmlRenderer(Path(__file__).resolve().parent / "templates")
+    cast_names = str(payload.prompt_variables.get("cast", "") or "").strip()
+    cast_list = [x.strip() for x in cast_names.split(",") if x.strip()][:5]
+    release_date = str(payload.prompt_variables.get("release_date", "") or "").strip()
+    runtime = str(payload.prompt_variables.get("runtime", "") or "").strip()
+    director = str(payload.prompt_variables.get("director", "") or "").strip()
+    genres = str(payload.prompt_variables.get("genres", "") or "").strip()
+    basic_info = {
+        "platform": _normalize_provider_ko(provider_ko),
+        "release_date": release_date,
+        "runtime": runtime,
+        "director": director,
+        "genres": genres,
+        "cast": cast_list,
+    }
     html = renderer.render(
         payload.render_template,
         {
@@ -201,6 +278,7 @@ def _run_generation_pipeline(db: Session, post: Post, payload: GeneratePostReque
             "poster_url": poster_url,
             "still_urls": still_urls,
             "tmdb_rating": str(payload.prompt_variables.get("rating", "") or "").strip(),
+            "basic_info": basic_info,
         },
     )
 
@@ -282,7 +360,10 @@ def _publish_post_internal(db: Session, post: Post) -> PublishResponse:
         media = publisher.upload_media(Path(image.local_path))
         image.wp_media_id = media.get("id")
         wp_media_url = media.get("source_url") or ((media.get("guid") or {}).get("rendered"))
-        wp_media_url = _to_public_url(wp_media_url)
+        if settings.wordpress_media_use_relative_urls:
+            wp_media_url = _to_relative_media_url(wp_media_url)
+        else:
+            wp_media_url = _to_public_url(wp_media_url)
         if wp_media_url and content_html:
             # Replace locally-rendered image path with final WordPress media URL.
             content_html = content_html.replace(image.local_path, wp_media_url)

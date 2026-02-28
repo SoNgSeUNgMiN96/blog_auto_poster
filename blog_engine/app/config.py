@@ -35,6 +35,7 @@ class Settings(BaseSettings):
 
     wordpress_base_url: str = Field(default="", alias="WORDPRESS_BASE_URL")
     wordpress_public_base_url: str = Field(default="", alias="WORDPRESS_PUBLIC_BASE_URL")
+    wordpress_media_use_relative_urls: bool = Field(default=True, alias="WORDPRESS_MEDIA_USE_RELATIVE_URLS")
     wordpress_username: str = Field(default="", alias="WORDPRESS_USERNAME")
     wordpress_app_password: str = Field(default="", alias="WORDPRESS_APP_PASSWORD")
     wordpress_default_status: str = Field(default="publish", alias="WORDPRESS_DEFAULT_STATUS")

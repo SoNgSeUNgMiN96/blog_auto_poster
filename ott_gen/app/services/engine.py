@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
+import re
 
 from app.clients.b_engine_client import BEngineClient
 from app.clients.tmdb_client import TMDBClient
@@ -102,6 +103,17 @@ class OTTGenEngine:
             original_overview = (pv.get("overview") or "").strip()
             enriched_overview = ""
             pv["overview"] = original_overview
+            providers_ko = [self._provider_to_korean(x) for x in providers]
+            providers_ko = [x for x in providers_ko if x]
+            primary_provider_ko = providers_ko[0] if providers_ko else ""
+            extra_meta = {
+                "release_date": str(pv.get("release_date", "") or ""),
+                "runtime": str(pv.get("runtime", "") or ""),
+                "director": str(pv.get("director", "") or ""),
+                "cast": str(pv.get("cast", "") or ""),
+                "providers_ko": ", ".join(providers_ko),
+                "primary_provider_ko": primary_provider_ko,
+            }
 
             changed = self.store.upsert_candidate(
                 tmdb_id=tmdb_id,
@@ -115,6 +127,7 @@ class OTTGenEngine:
                 genres=pv["genres"],
                 year=pv["year"],
                 provider_names=", ".join(providers),
+                extra_meta=extra_meta,
                 poster_url=poster_url,
                 still_urls=still_urls,
                 dedup_days=self.settings.dedup_days,
@@ -461,6 +474,13 @@ class OTTGenEngine:
             f"[원본 줄거리]\n{original_overview or '(없음)'}\n\n"
             f"[보강 줄거리]\n{enriched_overview or '(없음)'}"
         )
+        extra_meta = item.extra_meta or {}
+        release_date = str(extra_meta.get("release_date", "") or "")
+        runtime = str(extra_meta.get("runtime", "") or "")
+        director = str(extra_meta.get("director", "") or "")
+        cast = str(extra_meta.get("cast", "") or "")
+        providers_ko = str(extra_meta.get("providers_ko", "") or "")
+        primary_provider_ko = str(extra_meta.get("primary_provider_ko", "") or "")
         prompt_template = self._compose_prompt_template(self.settings.prompt_template)
 
         self.logger.info(
@@ -481,6 +501,12 @@ class OTTGenEngine:
                 "rating": item.rating,
                 "genres": item.genres,
                 "year": item.year,
+                "release_date": release_date,
+                "runtime": runtime,
+                "director": director,
+                "cast": cast,
+                "providers_ko": providers_ko,
+                "primary_provider_ko": primary_provider_ko,
                 "style_recipe_name": style["name"],
                 "style_intro": style["intro_style"],
                 "style_flow": style["section_flow"],
@@ -495,6 +521,29 @@ class OTTGenEngine:
             "auto_publish": self.settings.b_engine_auto_publish,
             "system_role": self.settings.b_engine_system_role,
         }
+
+    @staticmethod
+    def _provider_to_korean(provider_name: str) -> str:
+        raw = str(provider_name or "").strip().lower()
+        if not raw:
+            return ""
+        compact = re.sub(r"\s+", "", raw)
+        mapping = {
+            "netflix": "넷플릭스",
+            "watcha": "왓챠",
+            "wavve": "웨이브",
+            "tving": "티빙",
+            "disney+": "디즈니+",
+            "disneyplus": "디즈니+",
+            "disney plus": "디즈니+",
+            "coupangplay": "쿠팡플레이",
+            "coupang play": "쿠팡플레이",
+            "appletv+": "애플TV+",
+            "appletvplus": "애플TV+",
+        }
+        if compact in mapping:
+            return mapping[compact]
+        return str(provider_name or "").strip()
 
     def _next_style_recipe(self) -> dict[str, str]:
         cursor = self.store.get_state_int("style_recipe_cursor", 0)
@@ -521,6 +570,9 @@ class OTTGenEngine:
         runtime_guard = (
             "\n[이번 글 레퍼토리 가이드]\n"
             "- 스타일 코드: {style_recipe_name}\n"
+            "- 기본정보 우선 반영: 공개일={release_date}, 러닝타임={runtime}, 등장인물={cast}, 감독={director}, 장르={genres}, 플랫폼={providers_ko}\n"
+            "- 강조 표현 규칙: 본문 핵심어 강조 시 플레이스홀더를 써라. {{B:중요문장}}, {{HL:핵심키워드}}, {{ACC:포인트}} "
+            "형식만 사용하고 섹션당 1~3회 이내로 제한하라.\n"
             "- 도입 방식: {style_intro}\n"
             "- 섹션 전개: {style_flow}\n"
             "- 마무리 톤: {style_ending}\n"
